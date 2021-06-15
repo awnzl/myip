@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/awnzl/myip/internal/ipfinder"
 )
 
 func main() {
 	cfg := parseConfig()
 
-	fmt.Println(cfg.AllProviders, cfg.Timeout)
+	finder := ipfinder.New()
+	fmt.Println(finder.FindIp(cfg.AllProviders, cfg.Timeout))
 }
