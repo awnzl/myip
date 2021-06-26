@@ -2,9 +2,9 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
-	"os"
+
+	"github.com/spf13/pflag"
 )
 
 var ErrParseArgs = errors.New("cfg: incorrect argument")
@@ -20,36 +20,27 @@ type Config struct {
 	Timeout      int
 }
 
-func parseConfig() Config {
-	var allProviders, shortAllProviders bool
-	var timeout, shortTimeout int
+func parseConfig() (Config, error) {
+	var allProviders bool
+	var timeout int
 
-	flag.IntVar(&timeout, "timeout", 5, "Timeout in seconds: --timeout=3")
-	flag.BoolVar(&allProviders, "all-providers", false, "Bool flag: --all-providers")
-	flag.IntVar(&shortTimeout, "t", 5, "Timeout in seconds: --timeout=3")
-	flag.BoolVar(&shortAllProviders, "a", false, "Bool flag: --all-providers")
+	pflag.IntVarP(&timeout, "timeout", "t", 5, "")
+	pflag.BoolVarP(&allProviders, "all-providers", "a", false, "")
 
-	flag.Usage = usage
-	flag.Parse()
-
-	if shortTimeout != 5 {
-		timeout = shortTimeout
-	}
+	pflag.Usage = usage
+	pflag.Parse()
 
 	if timeout < 1 {
 		fmt.Printf("invalid value %v for flag -t\n", timeout)
 		usage()
-		os.Exit(0)
-	}
 
-	if shortAllProviders {
-		allProviders = shortAllProviders
+		return Config{}, ErrParseArgs
 	}
 
 	return Config{
 		AllProviders: allProviders,
 		Timeout:      timeout,
-	}
+	}, nil
 }
 
 func usage() {
