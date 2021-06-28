@@ -3,7 +3,9 @@ package ipfinder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -16,125 +18,128 @@ type Finder struct {
 	providers []string
 }
 
-type Provider struct {
-	URL      string
-	Response string
+type Response struct {
+	Provider string
+	IP       string
 }
 
-func New() *Finder {
-	finder := &Finder{
-		providers: []string{
-			"https://icanhazip.com",
-			"https://ifconfig.co",
-			"https://ipecho.net/plain",
-			"https://ifconfig.me",
-			"https://checkip.amazonaws.com",
-			//"https://whatismyip.com",
-		},
+type ResponseWithError struct {
+	Response Response
+	Error	 error
+}
+
+func New(aProviders []string) *Finder {
+	return &Finder{providers: aProviders}
+}
+
+func (f *Finder) FindIp(useAllProviders bool, timeout int) ([]Response, error) {
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	var responses []Response
+
+	c := f.requestProviders(timeoutCtx)
+	r := <-c
+	if r.Error != nil {
+		return nil, r.Error
 	}
 
-	return finder
-}
+	responses = append(responses, r.Response)
 
-func (f *Finder) FindIp(useAllProviders bool, timeout int) []Provider {
 	if useAllProviders {
-		return f.allProvidersResponse(timeout)
+		for r := range c {
+			if r.Error != nil {
+				return nil, r.Error
+			}
+			responses = append(responses, r.Response)
+		}
 	}
 
-	return f.anyProviderResponse(timeout)
+	return responses, nil
 }
 
-func (f *Finder) allProvidersResponse(timeout int) []Provider {
-	responseChan := make(chan Provider)
+func (f *Finder) requestProviders(timeoutCtx context.Context) <-chan ResponseWithError {
+	out := make(chan ResponseWithError)
 
 	go func() {
-		wg := new(sync.WaitGroup)
-		timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-		defer cancel()
-		defer close(responseChan)
+		wg := sync.WaitGroup{}
 
 		for _, url := range f.providers {
 			wg.Add(1)
 			go func(url string) {
 				defer wg.Done()
-				requestIP(timeoutCtx, responseChan, url)
+				r, err := requestIP(timeoutCtx, url)
+				out <- ResponseWithError{Response: r, Error: err}
 			}(url)
 		}
 
-		wg.Wait()
+		go func() {
+			wg.Wait()
+			close(out)
+		}()
 	}()
 
-	var results []Provider
-
-	for resp := range responseChan {
-		results = append(results, resp)
-	}
-
-	return results
+	return out
 }
 
-func (f *Finder) anyProviderResponse(timeout int) []Provider {
-	responseChan := make(chan Provider)
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer cancel()
-	defer close(responseChan)
-
-	for _, url := range f.providers {
-		go requestIP(timeoutCtx, responseChan, url)
+func requestIP(ctx context.Context, url string) (Response, error) {
+	client := http.DefaultClient
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return Response{}, err
 	}
 
-	for {
-		select {
-		case <-timeoutCtx.Done():
-			return []Provider{{URL: "All Providers", Response: timedOut}}
-		case v := <-responseChan:
-			return []Provider{v}
-		}
-	}
-}
+	//todo: remove test block
+	// test block start
+	done := make(chan struct{})
+	go func() {
+		rand.Seed(time.Now().UnixNano())
+		n := rand.Intn(10)
+		fmt.Println("sleep time", n, url)
+		time.Sleep(time.Duration(n) * time.Second)
 
-func requestIP(ctx context.Context, out chan<- Provider, url string) {
+		close(done)
+	}()
+
 	select {
+	case <-done:
+		break
 	case <-ctx.Done():
-		out <- Provider{URL: url, Response: timedOut}
-		return
-	default:
-		client := http.DefaultClient
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return
-		}
-
-		//todo: remove
-		//rand.Seed(time.Now().UnixNano())
-		//n := rand.Intn(10)
-		//fmt.Println("sleep time", n, url)
-		//time.Sleep(time.Duration(n) * time.Second)
-
-		//req.Header.Set("User-Agent", "")
-		//req.Header.Set("Accept", `*/*`)
-
-		resp, err := client.Do(req)
-		if errors.Is(err, context.DeadlineExceeded) {
-			out <- Provider{URL: url, Response: timedOut}
-			return
-		}
-		if err != nil {
-			return
-		}
-
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return
-		}
-
-		out <- Provider{URL: url, Response: extractIP(resp.Body)}
+		break
 	}
+	// test block end
+
+	//req.Header.Set("User-Agent", "")
+	//req.Header.Set("Accept", `*/*`)
+
+	resp, err := client.Do(req)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return Response{Provider: url, IP: timedOut}, nil
+	}
+	if err != nil {
+		return Response{}, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// TODO: is this correct error?
+		return Response{}, http.ErrBodyNotAllowed
+	}
+
+	ip, err := extractIP(resp.Body)
+	if err != nil {
+		return Response{}, err
+	}
+
+	return Response{Provider: url, IP: ip}, nil
 }
 
-func extractIP(src io.Reader) string {
-	bytes, _ := io.ReadAll(src)
+func extractIP(src io.Reader) (string, error) {
+	bytes, err := io.ReadAll(src)
+	if err != nil {
+		return "", err
+	}
 
-	return strings.TrimSpace(string(bytes))
+	return strings.TrimSpace(string(bytes)), nil
 }
