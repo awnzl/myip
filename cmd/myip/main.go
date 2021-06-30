@@ -8,6 +8,7 @@ import (
 
 	"github.com/awnzl/myip/internal/client"
 	"github.com/awnzl/myip/internal/ipfinder"
+	"github.com/awnzl/myip/internal/writer"
 )
 
 var textProviders = []string{
@@ -53,5 +54,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println(resp)
+	outputWriter := writer.New(os.Stdout)
+	outputWriter.Write(resp)
 }
