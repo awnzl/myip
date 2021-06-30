@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/awnzl/myip/internal/ipfinder"
 )
@@ -23,11 +25,22 @@ func main() {
 	}
 
 	finder := ipfinder.New(providers)
-	resp, err := finder.FindIp(cfg.AllProviders, cfg.Timeout)
+
+	t, err := time.ParseDuration(fmt.Sprintf("%vs", cfg.Timeout))
+	if err != nil {
+		os.Stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), t)
+	defer cancel()
+
+	resp, err := finder.FindIp(timeoutCtx, cfg.AllProviders)
 	if err != nil {
 		os.Stderr.WriteString(err.Error())
 		os.Exit(1)
 	}
 
 	fmt.Println(resp)
+
 }

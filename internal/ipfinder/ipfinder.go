@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 )
 
 const timedOut = "Timed Out"
@@ -32,33 +30,36 @@ func New(aProviders []string) *Finder {
 	return &Finder{providers: aProviders}
 }
 
-func (f *Finder) FindIp(useAllProviders bool, timeout int) ([]Response, error) {
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer cancel()
-
-	var responses []Response
-
-	c := f.requestProviders(timeoutCtx)
-	r := <-c
-	if r.Error != nil {
-		return nil, r.Error
-	}
-
-	responses = append(responses, r.Response)
+func (f *Finder) FindIp(ctx context.Context, useAllProviders bool) ([]Response, error) {
+	c := f.requestProviders(ctx)
 
 	if useAllProviders {
-		for r := range c {
-			if r.Error != nil {
-				return nil, r.Error
-			}
-			responses = append(responses, r.Response)
+		return allResponses(c)
+	}
+
+	resp := <-c
+	if resp.Error != nil {
+		return nil, resp.Error
+	}
+
+	return []Response{resp.Response}, nil
+}
+
+func allResponses(c <-chan ResponseWithError) ([]Response, error) {
+	var responses []Response
+
+	for resp := range c {
+		if resp.Error != nil {
+			return nil, resp.Error
 		}
+
+		responses = append(responses, resp.Response)
 	}
 
 	return responses, nil
 }
 
-func (f *Finder) requestProviders(timeoutCtx context.Context) <-chan ResponseWithError {
+func (f *Finder) requestProviders(ctx context.Context) <-chan ResponseWithError {
 	out := make(chan ResponseWithError)
 
 	go func() {
@@ -68,7 +69,7 @@ func (f *Finder) requestProviders(timeoutCtx context.Context) <-chan ResponseWit
 			wg.Add(1)
 			go func(url string) {
 				defer wg.Done()
-				r, err := requestIP(timeoutCtx, url)
+				r, err := requestIP(ctx, url)
 				out <- ResponseWithError{Response: r, Error: err}
 			}(url)
 		}
@@ -89,26 +90,6 @@ func requestIP(ctx context.Context, url string) (Response, error) {
 		return Response{}, err
 	}
 
-	//todo: remove test block
-	// test block start
-	done := make(chan struct{})
-	go func() {
-		rand.Seed(time.Now().UnixNano())
-		n := rand.Intn(10)
-		fmt.Println("sleep time", n, url)
-		time.Sleep(time.Duration(n) * time.Second)
-
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		break
-	case <-ctx.Done():
-		break
-	}
-	// test block end
-
 	//req.Header.Set("User-Agent", "")
 	//req.Header.Set("Accept", `*/*`)
 
@@ -123,8 +104,7 @@ func requestIP(ctx context.Context, url string) (Response, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// TODO: is this correct error?
-		return Response{}, http.ErrBodyNotAllowed
+		return Response{}, fmt.Errorf("ipfinder: response isn't useful, response code: %v", resp.StatusCode)
 	}
 
 	ip, err := extractIP(resp.Body)
