@@ -16,7 +16,6 @@ var textProviders = []string{
 	"https://ipecho.net/plain",
 	"https://ifconfig.me",
 	"https://checkip.amazonaws.com",
-	//"https://whatismyip.com",
 }
 
 var jsonProviders = []string{
@@ -29,12 +28,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	var textClients []client.IPClient
+	var clients []client.IPClient
 	for _, url := range textProviders {
-		textClients = append(textClients, client.NewTextClient(url))
+		clients = append(clients, client.NewTextClient(url))
+	}
+	for _, url := range jsonProviders {
+		clients = append(clients, client.NewJSONClient(url))
 	}
 
-	finder := ipfinder.New(textClients)
+	finder := ipfinder.New(clients)
 
 	t, err := time.ParseDuration(fmt.Sprintf("%vs", cfg.Timeout))
 	if err != nil {
