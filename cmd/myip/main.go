@@ -6,10 +6,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/awnzl/myip/internal/client"
 	"github.com/awnzl/myip/internal/ipfinder"
 )
 
-var providers = []string{
+var textProviders = []string{
 	"https://icanhazip.com",
 	"https://ifconfig.co",
 	"https://ipecho.net/plain",
@@ -18,13 +19,22 @@ var providers = []string{
 	//"https://whatismyip.com",
 }
 
+var jsonProviders = []string{
+	"https://ifconfig.co",
+}
+
 func main() {
 	cfg, err := parseConfig()
 	if err != nil {
 		os.Exit(1)
 	}
 
-	finder := ipfinder.New(providers)
+	var textClients []client.IPClient
+	for _, url := range textProviders {
+		textClients = append(textClients, client.NewTextClient(url))
+	}
+
+	finder := ipfinder.New(textClients)
 
 	t, err := time.ParseDuration(fmt.Sprintf("%vs", cfg.Timeout))
 	if err != nil {
@@ -42,5 +52,4 @@ func main() {
 	}
 
 	fmt.Println(resp)
-
 }
