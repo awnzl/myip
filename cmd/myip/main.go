@@ -54,6 +54,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	outputWriter := writer.New(os.Stdout)
-	outputWriter.Write(resp)
+	writer.New().Write(resp)
 }
