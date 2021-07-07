@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/spf13/pflag"
 )
 
-var ErrParseArgs = errors.New("cfg: incorrect argument")
+var ErrIncorrectArgument = errors.New("cfg: incorrect argument")
 
 const usageInfo = `Usage of MyIP: [-a|--all-providers][-t|--timeout=3]
   -a, --all-providers
@@ -17,7 +19,7 @@ const usageInfo = `Usage of MyIP: [-a|--all-providers][-t|--timeout=3]
 
 type Config struct {
 	AllProviders bool
-	Timeout      float64
+	Timeout      time.Duration
 }
 
 func parseConfig() (Config, error) {
@@ -34,12 +36,18 @@ func parseConfig() (Config, error) {
 		fmt.Printf("invalid value %v for flag -t\n", timeout)
 		usage()
 
-		return Config{}, ErrParseArgs
+		return Config{}, ErrIncorrectArgument
+	}
+
+	t, err := time.ParseDuration(fmt.Sprintf("%vs", timeout))
+	if err != nil {
+		os.Stderr.WriteString(err.Error())
+		return Config{}, err
 	}
 
 	return Config{
 		AllProviders: allProviders,
-		Timeout:      timeout,
+		Timeout:      t,
 	}, nil
 }
 

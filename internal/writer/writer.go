@@ -14,9 +14,9 @@ func New() *Writer {
 	return &Writer{}
 }
 
-func (p *Writer) Write(providers []client.Response) {
+func (p *Writer) Write(responses []client.Response) {
 	maxLen := 0
-	for _, p := range providers {
+	for _, p := range responses {
 		if l := len(p.Provider); l > maxLen {
 			maxLen = l
 		}
@@ -24,7 +24,7 @@ func (p *Writer) Write(providers []client.Response) {
 
 	fmt.Println("Provider", strings.Repeat(" ", maxLen - len("Provider")), "IP")
 
-	for _, resp := range providers {
+	for _, resp := range responses {
 		fmt.Println(resp.Provider, strings.Repeat(" ", maxLen - len(resp.Provider)), resp.IP)
 	}
 }

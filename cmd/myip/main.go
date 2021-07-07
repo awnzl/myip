@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"time"
 
 	"github.com/awnzl/myip/internal/client"
 	"github.com/awnzl/myip/internal/ipfinder"
@@ -37,17 +35,10 @@ func main() {
 		clients = append(clients, client.NewJSONClient(url))
 	}
 
-	finder := ipfinder.New(clients)
-
-	t, err := time.ParseDuration(fmt.Sprintf("%vs", cfg.Timeout))
-	if err != nil {
-		os.Stderr.WriteString(err.Error())
-		os.Exit(1)
-	}
-
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), t)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
 
+	finder := ipfinder.New(clients)
 	resp, err := finder.FindIp(timeoutCtx, cfg.AllProviders)
 	if err != nil {
 		os.Stderr.WriteString(err.Error())
